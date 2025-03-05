@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>VM Dashboard</title>
+    <style>
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        button { margin: 2px; }
+        .form-group { margin-bottom: 10px; }
+        label { display: inline-block; width: 100px; }
+    </style>
+</head>
+<body>
+    <h1>VM Dashboard</h1>
+    
+    <div>
+        <h2>Create VM</h2>
+        <div class="form-group">
+            <label for="vmName">VM Name:</label>
+            <input id="vmName" placeholder="VM Name">
+        </div>
+        <div class="form-group">
+            <label for="imageId">Image:</label>
+            <select id="imageId">
+                <option value="">Select an Image</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="flavorId">Flavor:</label>
+            <select id="flavorId">
+                <option value="">Select a Flavor</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="networkId">Network:</label>
+            <select id="networkId">
+                <option value="">Select a Network</option>
+            </select>
+        </div>
+        <button onclick="createVM()">Create VM</button>
+    </div>
+
+    <h2>VM List</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="vmList"></tbody>
+    </table>
+
+    <script>
+        // 공통 데이터 로딩 함수
+        async function loadDataToSelect(endpoint, selectId, textFormatter) {
+            try {
+                const response = await fetch(`/v1/compute/${endpoint}`);
+                if (!response.ok) {
+                    throw new Error(`Failed to load ${endpoint}: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                const select = document.getElementById(selectId);
+                
+                // 기존 옵션 제거 (첫 번째 기본 옵션 제외)
+                while (select.options.length > 1) {
+                    select.remove(1);
+                }
+                
+                // 새 옵션 추가
+                data.forEach(item => {
+                    const option = document.createElement('option');
+                    option.value = item.id;
+                    option.text = textFormatter(item);
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error(`Error loading ${endpoint}:`, error);
+                // alert(`Failed to load ${endpoint}. Please check console for details.`);
+            }
+        }
+
+        // 리소스별 로딩 함수
+        async function loadImages() {
+            await loadDataToSelect('images', 'imageId', image => `${image.name} (${image.id})`);
+        }
+
+        async function loadFlavors() {
+            await loadDataToSelect('flavors', 'flavorId', flavor => `${flavor.name} (${flavor.id})`);
+        }
+        
+        async function loadNetworks() {
+            await loadDataToSelect('networks', 'networkId', network => `${network.name} (${network.id})`);
+        }
+
+        async function loadVMs() {
+            try {
+                const response = await fetch('/v1/compute/vms');
+                if (!response.ok) {
+                    throw new Error(`Failed to load VMs: ${response.status} ${response.statusText}`);
+                }
+                
+                const vms = await response.json();
+                const tbody = document.getElementById('vmList');
+                tbody.innerHTML = '';
+                
+                vms.forEach(vm => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${vm.id}</td>
+                        <td>${vm.name}</td>
+                        <td>${vm.status}</td>
+                        <td>
+                            <button onclick="alert('Starting VM...'); vmAction('${vm.id}', 'os-start')">Start</button>
+                            <button onclick="alert('Stopping VM...'); vmAction('${vm.id}', 'os-stop')">Stop</button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } catch (error) {
+                console.error('Error loading VMs:', error);
+                // alert('Failed to load VMs. Please check console for details.');
+            }
+        }
+
+        async function createVM() {
+            const vmData = {
+                name: document.getElementById('vmName').value,
+                imageId: document.getElementById('imageId').value,
+                flavorId: document.getElementById('flavorId').value,
+                networkId: document.getElementById('networkId').value
+            };
+            
+            // 입력 검증
+            if (!vmData.name) {
+                alert('Please enter a VM name');
+                return;
+            }
+            if (!vmData.imageId) {
+                alert('Please select an image');
+                return;
+            }
+            if (!vmData.flavorId) {
+                alert('Please select a flavor');
+                return;
+            }
+            if (!vmData.networkId) {
+                alert('Please select a network');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/v1/compute/vms', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(vmData)
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to create VM');
+                }
+                
+                alert('VM created successfully!');
+                loadVMs();
+            } catch (error) {
+                console.error('Error creating VM:', error);
+                alert(`Failed to create VM: ${error.message}`);
+            }
+        }
+
+        async function vmAction(vmId, action) {
+            try {
+                const response = await fetch(`/v1/compute/vms/${vmId}/action`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || `Failed to perform action: ${action}`);
+                }
+                
+                loadVMs();
+            } catch (error) {
+                console.error(`Error performing VM action (${action}):`, error);
+                alert(`Failed to perform action: ${error.message}`);
+            }
+        }
+
+        // 페이지 초기화 함수
+        function init() {
+            loadImages();
+            loadFlavors();
+            loadNetworks();
+            loadVMs();
+        }
+
+        // 페이지 로드 시 초기화
+        init();
+    </script>
+</body>
+</html>
