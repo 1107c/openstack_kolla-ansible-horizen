@@ -1,6 +1,8 @@
 const express = require('express');
 const app = express();
-const vmRoutes = require('./routes/vmRoutes');
+const computeApi = require('./api/computeApi');
+const networkApi = require('./api/networkApi');
+
 
 app.use(express.static('public'));
 app.use(express.json());
@@ -19,7 +21,8 @@ const config = {
 };
 
 // 라우트 등록
-app.use('/v1/compute', vmRoutes(config));
+app.use('/v1/compute', computeApi(config));
+app.use('/v1/network', networkApi(config));
 
 app.listen(3001, () => {
     console.log('Server running on port 3001');

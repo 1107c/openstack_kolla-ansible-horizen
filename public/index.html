@@ -44,25 +44,54 @@
     <table>
         <thead>
             <tr>
-                <th>ID</th>
-                <th>Name</th>
+                <th>Instance</th>
+                <th>Image</th>
+                <th>Ip</th>
+                <th>Flavor</th>
                 <th>Status</th>
-                <th>Actions</th>
+                <th>Availability_zone</th>
+                <th>task_state</th>
+                <th>vm_state</th>
+                <th>Age</th>
             </tr>
         </thead>
         <tbody id="vmList"></tbody>
     </table>
-
+    <h2>Image List</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Visibility</th>
+                <th>Protected</th>
+                <th>Disk_format</th>
+                <th>Size</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="imageList"></tbody>
+    </table>
+    
     <script>
         // 공통 데이터 로딩 함수
-        async function loadDataToSelect(endpoint, selectId, textFormatter) {
+        async function loadData(base, endpoint, renderCallback) {
             try {
-                const response = await fetch(`/v1/compute/${endpoint}`);
+                const response = await fetch(`/v1/${base}/${endpoint}`);
                 if (!response.ok) {
                     throw new Error(`Failed to load ${endpoint}: ${response.status} ${response.statusText}`);
                 }
                 
                 const data = await response.json();
+                await renderCallback(data);
+            } catch (error) {
+                console.error(`Error loading ${endpoint}:`, error);
+                // alert(`Failed to load ${endpoint}. Please check console for details.`);
+            }
+        }
+
+        function renderToSelect(selectId, textFormatter) {
+            return data => {
                 const select = document.getElementById(selectId);
                 
                 // 기존 옵션 제거 (첫 번째 기본 옵션 제외)
@@ -77,53 +106,102 @@
                     option.text = textFormatter(item);
                     select.appendChild(option);
                 });
-            } catch (error) {
-                console.error(`Error loading ${endpoint}:`, error);
-                // alert(`Failed to load ${endpoint}. Please check console for details.`);
-            }
+            };
         }
 
+        // 테이블에 VM 데이터 렌더링 함수
+        function renderToTable(tableBodyId, columnRenderer, actionRenderer) {
+            return data => {
+                const tbody = document.getElementById(tableBodyId);
+                tbody.innerHTML = '';
+                
+                data.forEach(item => {
+                    const row = document.createElement('tr');
+                    
+                    // 컬럼 렌더링 (필수)
+                    const columnsHtml = columnRenderer(item);
+                    
+                    // 액션 렌더링 (선택적)
+                    const actionsHtml = actionRenderer ? `<td>${actionRenderer(item)}</td>` : '';
+                    
+                    row.innerHTML = columnsHtml + actionsHtml;
+                    tbody.appendChild(row);
+                });
+            };
+        }
         // 리소스별 로딩 함수
         async function loadImages() {
-            await loadDataToSelect('images', 'imageId', image => `${image.name} (${image.id})`);
+            try {
+                const response = await fetch('/v1/compute/images');
+                if (!response.ok) {
+                    throw new Error(`Failed to load images: ${response.status} ${response.statusText}`);
+                }
+                
+                const images = await response.json();
+                
+                // 선택 목록에 렌더링
+                renderToSelect('imageId', image => `${image.name} (${image.name})`)(images);
+                
+                // 테이블에 렌더링
+                renderToTable(
+                    'imageList',
+                    // 이미지용 컬럼 렌더러
+                    image => `
+                        <td>${image.name}</td>
+                        <td>${image.status || 'N/A'}</td>
+                        <td>${image.visibility}</td>
+                        <td>${image.protected}</td>
+                        <td>${image.disk_format}</td>
+                        <td>${Math.round(image.size / (1024 * 1024))} MB</td>
+                    `,
+                    // 이미지용 액션 렌더러
+                    image => `
+                        <button onclick="deleteImage('${image.id}')">Delete Image</button>
+                    `
+                )(images);
+                const table = document.getElementById('imageList').closest('table');
+                const headerRow = table.querySelector('thead tr');
+                const actionHeader = headerRow.cells[headerRow.cells.length - 1]; // 마지막 열 (Actions)
+                actionHeader.innerHTML = 'Actions <button onclick="createImage()">Create Image</button>';
+            } catch (error) {
+                console.error('Error loading images:', error);
+            }
+        }
+        function createImage() {
+            // 이미지 생성 모달 또는 폼을 표시하는 로직
+            alert("Create Image functionality will be implemented here");
         }
 
         async function loadFlavors() {
-            await loadDataToSelect('flavors', 'flavorId', flavor => `${flavor.name} (${flavor.id})`);
+            await loadData('compute', 'flavors', renderToSelect('flavorId', flavor => `${flavor.name} (${flavor.id})`));
         }
-        
+
         async function loadNetworks() {
-            await loadDataToSelect('networks', 'networkId', network => `${network.name} (${network.id})`);
+            await loadData('network','networks', renderToSelect('networkId', network => `${network.name} (${network.id})`));
         }
 
         async function loadVMs() {
-            try {
-                const response = await fetch('/v1/compute/vms');
-                if (!response.ok) {
-                    throw new Error(`Failed to load VMs: ${response.status} ${response.statusText}`);
-                }
-                
-                const vms = await response.json();
-                const tbody = document.getElementById('vmList');
-                tbody.innerHTML = '';
-                
-                vms.forEach(vm => {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${vm.id}</td>
-                        <td>${vm.name}</td>
-                        <td>${vm.status}</td>
-                        <td>
-                            <button onclick="alert('Starting VM...'); vmAction('${vm.id}', 'os-start')">Start</button>
-                            <button onclick="alert('Stopping VM...'); vmAction('${vm.id}', 'os-stop')">Stop</button>
-                        </td>
-                    `;
-                    tbody.appendChild(row);
-                });
-            } catch (error) {
-                console.error('Error loading VMs:', error);
-                // alert('Failed to load VMs. Please check console for details.');
-            }
+            loadData('compute','vms', renderToTable(
+                'vmList',
+                // VM용 컬럼 렌더러
+                vm => `
+                    <td>${vm.name}</td>
+                    <td>${vm.name}</td>
+                    <td>${vm.name}</td>
+                    <td>${vm.name}</td>
+                    <td>${vm.status}</td>
+                    <td>${vm['OS-EXT-AZ:availability_zone']}</td>
+                    <td>${vm['OS-EXT-STS:task_state']}</td>
+                    <td>${vm['OS-EXT-STS:vm_state']}</td>
+                    <td>${Math.floor((new Date(vm.updated) - new Date(vm.created)) / (1000 * 60 * 60))}h</td>
+                `,
+                // VM용 액션 렌더러
+                vm => `
+                    <button onclick="alert('Starting VM...'); vmAction('${vm.id}', 'os-start')">Start</button>
+                    <button onclick="alert('Stopping VM...'); vmAction('${vm.id}', 'os-stop')">Stop</button>
+                    <button onclick="alert('Deleting VM...'); vmAction('${vm.id}', 'delete')">Delete</button>
+                `
+            ));
         }
 
         async function createVM() {

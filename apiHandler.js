@@ -34,4 +34,20 @@ async function getToken(config) {
     };
 }
 
-module.exports = { getToken };
+const handleApiRequest = (apiFunction, config) => async (req, res) => {
+    try {
+        const token = await getToken(config);
+        const data = await apiFunction(token, config, req.params.id, req.body);
+        res.json(data);
+    } catch (error) {
+        console.error('API error:', error.response && error.response.data || error.message);
+        const errorMessage = error.response && error.response.data && error.response.data.badRequest && 
+                            error.response.data.badRequest.message || error.message;
+        res.status(error.response && error.response.status || 500).json({
+            success: false,
+            error: errorMessage
+        });
+    }
+};
+
+module.exports = { handleApiRequest };
