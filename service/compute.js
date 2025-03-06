@@ -136,22 +136,29 @@ async function createVM(token, config, vmData) {
 async function vmAction(token, config, vmId, action) {
     const computeUrl = await svc.getComputeEndpoint(token.catalog, config.region);
     try {
-        // VM 상태 확인 먼저 수행
-        // const vmData = await svc.apiRequest(`${computeUrl}/servers/${vmId}`, 'get', token);
-        // const vmStatus = vmData.server.status;
-        // console.log(`Current VM status: ${vmStatus}`);
+        // 중요: action이 문자열인지 확인하고 JSON 객체를 올바르게 구성
+        let requestBody = {};
         
-        // 액션 수행
+        // action이 문자열인지 확인
+        if (typeof action === 'string') {
+            // 문자열이면 객체의 키로 사용
+            requestBody[action] = null;
+        } else if (typeof action === 'object') {
+            // 이미 객체라면 그대로 사용
+            requestBody = action;
+        } else {
+            throw new Error(`Invalid action type: ${typeof action}`);
+        }
         
-        // if (action === 'delete')
-            // return svc.apiRequest(`${computeUrl}/servers/${vmId}`, 'delete', token);
-        return svc.apiRequest(`${computeUrl}/servers/${vmId}/action`, 'post', token, { [action]: null });
+        // console.log(`요청 본문:`, requestBody);
+        // console.log(`요청 JSON:`, JSON.stringify(requestBody));
+        
+        return svc.apiRequest(`${computeUrl}/servers/${vmId}/action`, 'post', token, requestBody);
     } catch (error) {
         console.error(`VM action error (${action}):`, error.message);
         throw error;
     }
 }
-
 async function deleteVM(token, config, vmId) {
     const computeUrl = await svc.getComputeEndpoint(token.catalog, config.region);
     try {

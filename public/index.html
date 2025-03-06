@@ -349,8 +349,8 @@
                         `;
                     },
                     vm => `
-                        <button onclick="apiAction('/v1/compute/vms/${vm.id}/action', { action: 'os-start' }, 'start')">Start</button>
-                        <button onclick="apiAction('/v1/compute/vms/${vm.id}/action', { action: 'os-stop' }, 'stop')">Stop</button>
+                        <button onclick="apiAction('/v1/compute/vms/${vm.id}/action', { 'os-start': null }, 'start')">Start</button>
+                        <button onclick="apiAction('/v1/compute/vms/${vm.id}/action', { 'os-stop': null }, 'stop')">Stop</button>
                         <button onclick="apiAction('/v1/compute/vms/${vm.id}', null,  'delete')">Delete</button>
                     `
                 ));
@@ -520,41 +520,61 @@
         }
 
         async function apiAction(endpoint, body, message) {
-            try {
-                let response;
-                if (message == 'delete')
-                {
-                    response = await fetch(endpoint, {
-                        method: 'DELETE',
-                        headers: { 'Content-Type': 'application/json' }
-                    });
-                }
-                else
-                {
-                    response = await fetch(endpoint, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify( body )
-                    });
-                }
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.error || `Failed to perform action: ${message}`);
-                }
-                
-                if (endpoint.includes('/images')) {
-                    alert(`Image ${message} successfully`);
-                    loadImages();
-                } else {
-                    alert(`VM ${message} successfully`);
-                    loadVMs();
-                }
-            } catch (error) {
-                console.error(`Error performing action (${message}):`, error);
-                alert(`Failed to perform action: ${error.message}`);
-            }
+    try {
+        console.log(`apiAction 호출됨 - endpoint: ${endpoint}, message: ${message}`);
+        console.log(`요청 본문:`, body);
+        console.log(`JSON 변환 후:`, JSON.stringify(body));
+        
+        let response;
+        if (message == 'delete')
+        {
+            console.log(`DELETE 요청 실행 중...`);
+            response = await fetch(endpoint, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' }
+            });
         }
-
+        else
+        {
+            console.log(`POST 요청 실행 중...`);
+            response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+        }
+        
+        console.log(`응답 상태 코드: ${response.status}`);
+        
+        if (!response.ok) {
+            const error = await response.json();
+            console.error('오류 응답 데이터:', error);
+            throw new Error(error.error || `Failed to perform action: ${message}`);
+        }
+        
+        // 응답 본문이 있는지 확인
+        try {
+            const responseData = await response.json();
+            console.log('응답 데이터:', responseData);
+        } catch (e) {
+            console.log('응답 본문이 없거나 JSON 형식이 아닙니다.');
+        }
+        
+        console.log(`${message} 작업 성공!`);
+        
+        if (endpoint.includes('/images')) {
+            alert(`Image ${message} successfully`);
+            loadImages();
+        } else {
+            alert(`VM ${message} successfully`);
+            loadVMs();
+        }
+    } catch (error) {
+        console.error(`Error performing action (${message}):`, error);
+        console.error('오류 상세 정보:', error.stack);
+        alert(`Failed to perform action: ${error.message}`);
+    }
+}
         // 페이지 초기화 함수
         function init() {
             loadImages();
