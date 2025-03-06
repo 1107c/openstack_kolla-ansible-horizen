@@ -51,7 +51,7 @@ module.exports = (config) => {
      * /v1/network/subnets/{id}:
      *   get:
      *     summary: 지정된 서브넷을 조회합니다.
-     *     tags: [Subnets]
+     *     tags: [Networks]
      *     parameters:
      *       - in: path
      *         name: id
