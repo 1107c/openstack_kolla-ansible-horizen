@@ -47,6 +47,7 @@
    npm app.js
    ```
 ## Swagger API 문서 확인 서버 실행 후 브라우저에서 http://localhost:3000/api-docs로 접속하여 API 문서를 확인할 수 있습니다.
- 214332
+![image](https://github.com/user-attachments/assets/d548cb2e-3f3e-4ec2-811d-683c9e10a932)
+
 
 
