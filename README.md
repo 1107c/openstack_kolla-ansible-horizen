@@ -46,11 +46,7 @@
    npm install
    npm app.js
    ```
-4. Swagger API 문서 확인 서버 실행 후 브라우저에서 http://localhost:3000/api-docs로 접속하여 API 문서를 확인할 수 있습니다.
-   자세한 API 사용법은 Swagger 문서(http://localhost:3000/api-docs)를 참조하세요. 아래는 프로젝트의 스크린샷입니다:
-라이선스
-이 프로젝트는 MIT 라이선스에 따라 배포됩니다.
+## Swagger API 문서 확인 서버 실행 후 브라우저에서 http://localhost:3000/api-docs로 접속하여 API 문서를 확인할 수 있습니다.
+ 214332
 
-문의
-추가 질문이 있거나 문제가 발생할 경우, 이메일 또는 이슈 트래커를 통해 문의하세요.
 
