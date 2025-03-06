@@ -57,6 +57,7 @@
         </thead>
         <tbody id="vmList"></tbody>
     </table>
+
     <h2>Image List</h2>
     <table>
         <thead>
@@ -72,17 +73,37 @@
         </thead>
         <tbody id="imageList"></tbody>
     </table>
-    
+
+    <h2>Network List</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Subnet</th>
+                <th>Shared</th>
+                <th>Status</th>
+                <th>Availability_zone</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="networkList"></tbody>
+    </table>    
     <script>
         // 공통 데이터 로딩 함수
-        async function loadData(base, endpoint, renderCallback) {
+        async function loadData(base, endpoint, renderCallback, id) {
             try {
-                const response = await fetch(`/v1/${base}/${endpoint}`);
+                let  response;
+                if (id == null)
+                    response = await fetch(`/v1/${base}/${endpoint}`);
+                else
+                    response = await fetch(`/v1/${base}/${endpoint}/${id}`);
                 if (!response.ok) {
                     throw new Error(`Failed to load ${endpoint}: ${response.status} ${response.statusText}`);
                 }
                 
                 const data = await response.json();
+                if (!renderCallback)
+                    return data;
                 await renderCallback(data);
             } catch (error) {
                 console.error(`Error loading ${endpoint}:`, error);
@@ -111,34 +132,76 @@
 
         // 테이블에 VM 데이터 렌더링 함수
         function renderToTable(tableBodyId, columnRenderer, actionRenderer) {
-            return data => {
+            return async data => {
                 const tbody = document.getElementById(tableBodyId);
                 tbody.innerHTML = '';
-                
-                data.forEach(item => {
+                for (const item of data) {
                     const row = document.createElement('tr');
-                    
-                    // 컬럼 렌더링 (필수)
-                    const columnsHtml = columnRenderer(item);
-                    
-                    // 액션 렌더링 (선택적)
+                    const columnsHtml = await columnRenderer(item); // 비동기 처리
                     const actionsHtml = actionRenderer ? `<td>${actionRenderer(item)}</td>` : '';
-                    
                     row.innerHTML = columnsHtml + actionsHtml;
                     tbody.appendChild(row);
-                });
+                }
             };
         }
         // 리소스별 로딩 함수
+
+        function createImage() {
+            // 이미지 생성 모달 또는 폼을 표시하는 로직
+            alert("Create Image functionality will be implemented here");
+        }
+
+        async function loadFlavors() {
+            await loadData('compute', 'flavors', renderToSelect('flavorId', flavor => `${flavor.name} (${flavor.id})`));
+        }
+
+        async function loadNetworks() {
+            try {
+                const networks = await loadData('network', 'networks');
+                
+                // 선택 목록에 렌더링
+                renderToSelect('networkId', network => `${network.name} (${network.name})`)(networks);
+                // console.log("network.id:", network.id);
+                // const subnet = await loadData('network', 'networks', null, network.id);
+                // 테이블에 렌더링
+                await renderToTable(
+                    'networkList',
+                async network => {
+                    let subnetName = 'N/A';
+                    if (network.subnets && network.subnets.length > 0) {
+                        try {
+                            const subnet = await loadData('network', 'subnets', null, network.subnets[0]);
+                            if (subnet && subnet.name) {
+                                subnetName = subnet.name;
+                            }
+                        } catch (error) {
+                            console.error(`Error loading subnet for network ${network.id}:`, error);
+                        }
+                    }
+                    return `
+                    <td>${network.name || 'N/A'}</td>
+                    <td>${subnetName}</td>
+                    <td>${network.shared !== undefined ? network.shared : 'N/A'}</td>
+                    <td>${network.status || 'N/A'}</td>
+                    <td>${network.availability_zones ? network.availability_zones.join(', ') : 'N/A'}</td>
+                `;
+            },
+                    network => `
+                        <button onclick="deleteNetwork('${network.id}')">Delete Network</button>
+                    `
+                )(networks);
+                const table = document.getElementById('networkList').closest('table');
+                const headerRow = table.querySelector('thead tr');
+                const actionHeader = headerRow.cells[headerRow.cells.length - 1]; // 마지막 열 (Actions)
+                actionHeader.innerHTML = '<button onclick="create Network()">Create Network</button>';
+            } catch (error) {
+                console.error('Error loading networkLists:', error);
+            }
+        }
+
         async function loadImages() {
             try {
-                const response = await fetch('/v1/compute/images');
-                if (!response.ok) {
-                    throw new Error(`Failed to load images: ${response.status} ${response.statusText}`);
-                }
-                
-                const images = await response.json();
-                
+                const images = await loadData('compute', 'images');
                 // 선택 목록에 렌더링
                 renderToSelect('imageId', image => `${image.name} (${image.name})`)(images);
                 
@@ -162,24 +225,11 @@
                 const table = document.getElementById('imageList').closest('table');
                 const headerRow = table.querySelector('thead tr');
                 const actionHeader = headerRow.cells[headerRow.cells.length - 1]; // 마지막 열 (Actions)
-                actionHeader.innerHTML = 'Actions <button onclick="createImage()">Create Image</button>';
+                actionHeader.innerHTML = '<button onclick="create Image()">Create Image</button>';
             } catch (error) {
                 console.error('Error loading images:', error);
             }
         }
-        function createImage() {
-            // 이미지 생성 모달 또는 폼을 표시하는 로직
-            alert("Create Image functionality will be implemented here");
-        }
-
-        async function loadFlavors() {
-            await loadData('compute', 'flavors', renderToSelect('flavorId', flavor => `${flavor.name} (${flavor.id})`));
-        }
-
-        async function loadNetworks() {
-            await loadData('network','networks', renderToSelect('networkId', network => `${network.name} (${network.id})`));
-        }
-
         async function loadVMs() {
             loadData('compute','vms', renderToTable(
                 'vmList',
