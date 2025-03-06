@@ -404,6 +404,7 @@ module.exports = (config) => {
      *       404:
      *         description: VM을 찾을 수 없음
      */
+    router.delete('/vms/:id', Handler(computeApi.deleteVM, true));
 
 
     // 이미지 파일 업로드
