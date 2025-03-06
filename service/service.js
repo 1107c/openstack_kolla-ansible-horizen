@@ -32,26 +32,27 @@ async function getNetworkEndpoint(catalog, region) {
 }
 
 // API 요청을 위한 공통 함수
-async function apiRequest(url, method, token, data = null) {
-    const config = {
+const apiRequest = async (url, method, token, data, options = {}) => {
+    const requestOptions = {
         method,
-        url,
-        headers: { 'X-Auth-Token': token.id || token.token }
+        headers: {
+            'X-Auth-Token': token.token,
+            ...options.headers
+        },
+        ...options
     };
     
-    if (data) {
-        config.data = data;
+    // 데이터가 있고 transformRequest 옵션이 없으면 기본적으로 JSON 변환
+    if (data !== undefined && !options.transformRequest) {
+        requestOptions.headers['Content-Type'] = requestOptions.headers['Content-Type'] || 'application/json';
+        requestOptions.data = JSON.stringify(data);
+    } else if (data !== undefined) {
+        requestOptions.data = data;
     }
     
-    try {
-        const response = await axios(config);
-        return response.data;
-    } catch (error) {
-        console.error(`API request error: ${url}`, 
-            error.response && error.response.data || error.message);
-        throw error;
-    }
-}
+    const response = await axios(url, requestOptions);
+    return response.data;
+};
 
 module.exports = { getComputeEndpoint, 
                     getImageEndpoint,

@@ -50,4 +50,4 @@ const handleApiRequest = (apiFunction, config) => async (req, res) => {
     }
 };
 
-module.exports = { handleApiRequest };
+module.exports = { handleApiRequest, getToken };

@@ -8,6 +8,38 @@
         button { margin: 2px; }
         .form-group { margin-bottom: 10px; }
         label { display: inline-block; width: 100px; }
+        
+        /* 모달 스타일 */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.4);
+        }
+        
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 50%;
+        }
+        
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .close:hover {
+            color: black;
+        }
     </style>
 </head>
 <body>
@@ -47,7 +79,6 @@
                 <th>Instance</th>
                 <th>Image</th>
                 <th>Ip</th>
-                <th>Flavor</th>
                 <th>Status</th>
                 <th>Availability_zone</th>
                 <th>task_state</th>
@@ -87,7 +118,43 @@
             </tr>
         </thead>
         <tbody id="networkList"></tbody>
-    </table>    
+    </table>
+
+    <!-- 이미지 생성 모달 -->
+    <div id="createImageModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeImageModal()">&times;</span>
+            <h2>Create Image</h2>
+            <div class="form-group">
+                <label for="imageName">Name:</label>
+                <input id="imageName" placeholder="Image Name">
+            </div>
+            <div class="form-group">
+                <label for="imageFile">File:</label>
+                <input type="file" id="imageFile">
+            </div>
+            <div class="form-group">
+                <label for="visibility">Visibility:</label>
+                <select id="visibility">
+                    <option value="private">Private</option>
+                    <option value="public">Public</option>
+                </select>
+            </div>
+            <button onclick="submitCreateImage()">Create Image</button>
+        </div>
+    </div>
+    <div id="createNetworkModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeNetworkModal()">×</span>
+            <h3>Create Network</h3>
+            <div>
+                <label>Name: <input type="text" id="networkName" required></label>
+            </div>
+            <br>
+            <button onclick="submitCreateNetwork()">Create</button>
+            <button onclick="closeNetworkModal()">Cancel</button>
+        </div>
+    </div>
     <script>
         // 공통 데이터 로딩 함수
         async function loadData(base, endpoint, renderCallback, id) {
@@ -146,11 +213,6 @@
         }
         // 리소스별 로딩 함수
 
-        function createImage() {
-            // 이미지 생성 모달 또는 폼을 표시하는 로직
-            alert("Create Image functionality will be implemented here");
-        }
-
         async function loadFlavors() {
             await loadData('compute', 'flavors', renderToSelect('flavorId', flavor => `${flavor.name} (${flavor.id})`));
         }
@@ -161,29 +223,43 @@
                 
                 // 선택 목록에 렌더링
                 renderToSelect('networkId', network => `${network.name} (${network.name})`)(networks);
-                // console.log("network.id:", network.id);
                 // const subnet = await loadData('network', 'networks', null, network.id);
                 // 테이블에 렌더링
                 await renderToTable(
                     'networkList',
                 async network => {
-                    let subnetName = 'N/A';
+                    let subnetsInfo = [];
+
                     if (network.subnets && network.subnets.length > 0) {
-                        try {
-                            const subnet = await loadData('network', 'subnets', null, network.subnets[0]);
-                            if (subnet && subnet.name) {
-                                subnetName = subnet.name;
-                            }
-                        } catch (error) {
-                            console.error(`Error loading subnet for network ${network.id}:`, error);
-                        }
+                        // 모든 서브넷에 대해 병렬로 데이터 가져오기
+                        const subnetPromises = network.subnets.map(subnetId => 
+                            loadData('network', 'subnets', null, subnetId)
+                                .catch(error => {
+                                    console.error(`Error loading subnet ${subnetId}:`, error);
+                                    return null; // 오류 발생 시 null 반환
+                                })
+                        );
+                        
+                        // 모든 서브넷 데이터 기다리기
+                        const subnetsData = await Promise.all(subnetPromises);
+                        
+                        // 유효한 서브넷 데이터만 필터링하고 정보 구성
+                        subnetsInfo = subnetsData
+                            .filter(subnet => subnet != null)
+                            .map(subnet => `${subnet.name || 'Unknown'} (${subnet.cidr || 'No CIDR'})`);
                     }
+
+                    // 서브넷이 없는 경우 처리
+                    if (subnetsInfo.length === 0) {
+                        subnetsInfo.push('None');
+                    }
+
                     return `
-                    <td>${network.name || 'N/A'}</td>
-                    <td>${subnetName}</td>
-                    <td>${network.shared !== undefined ? network.shared : 'N/A'}</td>
-                    <td>${network.status || 'N/A'}</td>
-                    <td>${network.availability_zones ? network.availability_zones.join(', ') : 'N/A'}</td>
+                        <td>${network.name || 'None'}</td>
+                        <td>${subnetsInfo.join('<br>')}</td>
+                    <td>${network.shared !== undefined ? network.shared : 'None'}</td>
+                    <td>${network.status || 'None'}</td>
+                    <td>${network.availability_zones ? network.availability_zones.join(', ') : 'None'}</td>
                 `;
             },
                     network => `
@@ -193,9 +269,18 @@
                 const table = document.getElementById('networkList').closest('table');
                 const headerRow = table.querySelector('thead tr');
                 const actionHeader = headerRow.cells[headerRow.cells.length - 1]; // 마지막 열 (Actions)
-                actionHeader.innerHTML = '<button onclick="create Network()">Create Network</button>';
+                actionHeader.innerHTML = '<button onclick="openNetworkModal()">Create Network</button>';
             } catch (error) {
                 console.error('Error loading networkLists:', error);
+            }
+        }
+
+        async function loadVolumes() {
+            try {
+                const volumes = await loadData('compute', 'volumes');
+                renderToSelect('volumeId', volume => `${volume.name || volume.id} (${(volume.size || 0)} GB)`)(volumes);
+            } catch (error) {
+                console.error('Error loading volumes:', error);
             }
         }
 
@@ -211,11 +296,11 @@
                     // 이미지용 컬럼 렌더러
                     image => `
                         <td>${image.name}</td>
-                        <td>${image.status || 'N/A'}</td>
+                        <td>${image.status || 'None'}</td>
                         <td>${image.visibility}</td>
                         <td>${image.protected}</td>
                         <td>${image.disk_format}</td>
-                        <td>${Math.round(image.size / (1024 * 1024))} MB</td>
+                        <td>${Math.round((image.size || 0) / (1024 * 1024))} MB</td>
                     `,
                     // 이미지용 액션 렌더러
                     image => `
@@ -225,33 +310,53 @@
                 const table = document.getElementById('imageList').closest('table');
                 const headerRow = table.querySelector('thead tr');
                 const actionHeader = headerRow.cells[headerRow.cells.length - 1]; // 마지막 열 (Actions)
-                actionHeader.innerHTML = '<button onclick="create Image()">Create Image</button>';
+                actionHeader.innerHTML = '<button onclick="openImageModal()">Create Image</button>';
             } catch (error) {
                 console.error('Error loading images:', error);
             }
         }
+
         async function loadVMs() {
-            loadData('compute','vms', renderToTable(
-                'vmList',
-                // VM용 컬럼 렌더러
-                vm => `
-                    <td>${vm.name}</td>
-                    <td>${vm.name}</td>
-                    <td>${vm.name}</td>
-                    <td>${vm.name}</td>
-                    <td>${vm.status}</td>
-                    <td>${vm['OS-EXT-AZ:availability_zone']}</td>
-                    <td>${vm['OS-EXT-STS:task_state']}</td>
-                    <td>${vm['OS-EXT-STS:vm_state']}</td>
-                    <td>${Math.floor((new Date(vm.updated) - new Date(vm.created)) / (1000 * 60 * 60))}h</td>
-                `,
-                // VM용 액션 렌더러
-                vm => `
-                    <button onclick="alert('Starting VM...'); vmAction('${vm.id}', 'os-start')">Start</button>
-                    <button onclick="alert('Stopping VM...'); vmAction('${vm.id}', 'os-stop')">Stop</button>
-                    <button onclick="alert('Deleting VM...'); vmAction('${vm.id}', 'delete')">Delete</button>
-                `
-            ));
+            try {
+                await loadData('compute', 'vms', renderToTable(
+                    'vmList',
+                    async vm => {
+                        let imageName = 'None';
+                        if (vm.image && vm.image.id) {
+                            try {
+                                const image = await loadData('compute', 'images', null, vm.image.id);
+                                imageName = image.name || 'None';
+                            } catch (error) {
+                                console.error(`Error loading image for VM ${vm.id}:`, error);
+                            }
+                        }
+                        const allIps = vm.addresses
+                            ? Object.entries(vm.addresses)
+                                .map(([networkName, ips]) => 
+                                    ips.map(ip => `${networkName}: ${ip.addr}`).join(', ')
+                                )
+                                .join('; ') || 'None'
+                            : 'None';                        
+                        return `
+                            <td>${vm.name}</td>
+                            <td>${imageName}</td> 
+                            <td>${allIps}</td>
+                            <td>${vm.status}</td>
+                            <td>${vm['OS-EXT-AZ:availability_zone'] || 'None'}</td>
+                            <td>${vm['OS-EXT-STS:task_state'] || 'None'}</td>
+                            <td>${vm['OS-EXT-STS:vm_state'] || 'None'}</td>
+                            <td>${Math.floor((new Date() - new Date(vm.created)) / (1000 * 60 * 60))}h ${Math.floor(((new Date() - new Date(vm.created)) % (1000 * 60 * 60)) / (1000 * 60))}m</td>
+                        `;
+                    },
+                    vm => `
+                        <button onclick="apiAction('/v1/compute/vms/${vm.id}/action', { action: 'os-start' }, 'start')">Start</button>
+                        <button onclick="apiAction('/v1/compute/vms/${vm.id}/action', { action: 'os-stop' }, 'stop')">Stop</button>
+                        <button onclick="apiAction('/v1/compute/vms/${vm.id}', null,  'delete')">Delete</button>
+                    `
+                ));
+            } catch (error) {
+                console.error('Error loading VMs:', error);
+            }
         }
 
         async function createVM() {
@@ -280,42 +385,172 @@
                 return;
             }
             
-            try {
-                const response = await fetch('/v1/compute/vms', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(vmData)
-                });
-                
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.error || 'Failed to create VM');
+            apiAction('/v1/compute/vms', vmData, 'create');
+        }
+
+        function openNetworkModal() {
+            document.getElementById('createNetworkModal').style.display = 'block';
+        }
+
+        function closeNetworkModal() {
+            document.getElementById('createNetworkModal').style.display = 'none';
+        }
+        // 이미지 생성 모달 관련 함수
+        function openImageModal() {
+            document.getElementById('createImageModal').style.display = 'block';
+        }
+
+        function closeImageModal() {
+            document.getElementById('createImageModal').style.display = 'none';
+        }
+
+
+        async function submitCreateNetwork() {
+            const networkName = document.getElementById('networkName').value;
+
+            if (!networkName) {
+                alert('네트워크 이름을 입력하세요');
+                return;
+            }
+
+            const networkData = {
+                network: {
+                    name: networkName,
+                    admin_state_up: true, // 기본값 고정
+                    shared: false,        // 기본값 고정
+                    port_security_enabled: true // 기본값 고정
                 }
-                
-                alert('VM created successfully!');
-                loadVMs();
+            };
+
+            try {
+                // 서버의 /networks 엔드포인트로 POST 요청
+                const response = await fetch('/v1/network/networks', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+
+                    },
+                    body: JSON.stringify(networkData)
+                });
+
+                if (!response.ok) {
+                    throw new Error('네트워크 생성 실패: ' + response.statusText);
+                }
+
+                const result = await response.json();
+                console.log('Network created:', result);
+                alert('네트워크 생성 성공');
+                closeNetworkModal();
             } catch (error) {
-                console.error('Error creating VM:', error);
-                alert(`Failed to create VM: ${error.message}`);
+                console.error('네트워크 생성 오류:', error);
+                alert('오류: ' + error.message);
             }
         }
 
-        async function vmAction(vmId, action) {
+        async function submitCreateImage() {
+            const imageName = document.getElementById('imageName').value;
+            const visibility = document.getElementById('visibility').value;
+            const fileInput = document.getElementById('imageFile');
+            
+            if (!imageName) {
+                alert('이미지 이름을 입력하세요');
+                return;
+            }
+            
+            if (!fileInput.files || fileInput.files.length === 0) {
+                alert('파일을 선택하세요');
+                return;
+            }
+            
             try {
-                const response = await fetch(`/v1/compute/vms/${vmId}/action`, {
+                // 1. 이미지 메타데이터 생성
+                const createResponse = await fetch('/v1/compute/images', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action })
+                    body: JSON.stringify({
+                        name: imageName,
+                        visibility: visibility,
+                        disk_format: 'qcow2',
+                        container_format: 'bare'
+                    })
                 });
                 
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.error || `Failed to perform action: ${action}`);
+                if (!createResponse.ok) {
+                    throw new Error('이미지 메타데이터 생성 실패');
                 }
                 
-                loadVMs();
+                const imageData = await createResponse.json();
+                
+                // 2. 파일 데이터 준비
+                const file = fileInput.files[0];
+                console.log('업로드할 파일:', file.name, file.size, file.type);
+                
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                // 3. 이미지 파일 업로드
+                const uploadResponse = await fetch(`/v1/compute/images/${imageData.id}/file`, {
+                    method: 'PUT',
+                    body: formData // FormData 사용
+                });
+                
+                if (!uploadResponse.ok) {
+                    throw new Error('이미지 파일 업로드 실패');
+                }
+                
+                alert('이미지가 성공적으로 생성되었습니다');
+                closeImageModal();
+                loadImages();
             } catch (error) {
-                console.error(`Error performing VM action (${action}):`, error);
+                console.error('이미지 생성 오류:', error);
+                alert(`오류: ${error.message}`);
+            }
+        }
+
+        async function deleteImage(imageId) {
+            if (confirm('Are you sure you want to delete this image?')) {
+                apiAction(`/v1/compute/images/${imageId}`, null, 'delete');
+            }
+        }
+        
+        async function deleteNetwork(networkId) {
+            if (confirm('Are you sure you want to delete this network?')) {
+                apiAction(`/v1/network/networks/${networkId}`, null, 'delete');
+            }
+        }
+
+        async function apiAction(endpoint, body, message) {
+            try {
+                let response;
+                if (message == 'delete')
+                {
+                    response = await fetch(endpoint, {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                }
+                else
+                {
+                    response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify( body )
+                    });
+                }
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || `Failed to perform action: ${message}`);
+                }
+                
+                if (endpoint.includes('/images')) {
+                    alert(`Image ${message} successfully`);
+                    loadImages();
+                } else {
+                    alert(`VM ${message} successfully`);
+                    loadVMs();
+                }
+            } catch (error) {
+                console.error(`Error performing action (${message}):`, error);
                 alert(`Failed to perform action: ${error.message}`);
             }
         }
@@ -330,6 +565,14 @@
 
         // 페이지 로드 시 초기화
         init();
+        
+        // 모달 외부 클릭 시 닫기
+        window.onclick = function(event) {
+            const modal = document.getElementById('createImageModal');
+            if (event.target === modal) {
+                closeImageModal();
+            }
+        };
     </script>
 </body>
 </html>
